@@ -3,6 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google import genai
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+import numpy as np
 
 API_KEY = "AIzaSyCKl2pqg6xOaIsrTlYEr8X6HCdpBxWh530"
 MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.0-flash-lite", "gemini-flash-latest"]
@@ -67,6 +70,114 @@ def generate(prompt: str) -> str:
                 return f"Error: {err}"
     return "All AI models are busy right now. Please try again in a moment."
 
+
+# ── ML Models ──────────────────────────────────────────────────────────────
+
+class InterestRecord(BaseModel):
+    time_spent: float
+    quiz_score: float
+    revision_count: float
+    rating: float
+    subject: str
+
+class InterestPredictRequest(BaseModel):
+    records: list[InterestRecord]
+
+class ForgettingRecord(BaseModel):
+    days_gap: float
+    quiz_score: float
+    revision_count: float
+    difficulty: float
+    concept_id: str
+    subject: str
+
+class ForgettingPredictRequest(BaseModel):
+    records: list[ForgettingRecord]
+
+
+@app.post("/predict-interest")
+async def predict_interest(req: InterestPredictRequest):
+    """
+    Trains a RandomForestClassifier on the user's own activity data,
+    then predicts which subjects the user is interested in.
+    Returns a ranked list of subjects by predicted interest probability.
+    """
+    if len(req.records) < 2:
+        # Not enough data — fall back to returning all subjects
+        subjects = list({r.subject for r in req.records})
+        return {"interested_subjects": subjects, "method": "fallback"}
+
+    X = np.array([[r.time_spent, r.quiz_score, r.revision_count, r.rating] for r in req.records])
+    # Label: interested if time_spent > 15 AND rating > 3
+    y = np.array([1 if (r.time_spent > 15 and r.rating > 3) else 0 for r in req.records])
+
+    # Need at least one positive and one negative sample to train
+    if len(set(y)) < 2:
+        # All same label — return subjects with highest engagement
+        sorted_records = sorted(req.records, key=lambda r: r.time_spent + r.rating * 3, reverse=True)
+        subjects = list(dict.fromkeys(r.subject for r in sorted_records))
+        return {"interested_subjects": subjects, "method": "fallback_sorted"}
+
+    model = RandomForestClassifier(n_estimators=50, random_state=42)
+    model.fit(X, y)
+
+    # Predict probability of interest per record, then aggregate by subject
+    probs = model.predict_proba(X)[:, 1]  # probability of class=1 (interested)
+
+    subject_scores: dict[str, list[float]] = {}
+    for record, prob in zip(req.records, probs):
+        subject_scores.setdefault(record.subject, []).append(prob)
+
+    # Average probability per subject, sorted descending
+    subject_avg = {s: float(np.mean(ps)) for s, ps in subject_scores.items()}
+    ranked = sorted(subject_avg.items(), key=lambda x: x[1], reverse=True)
+    interested_subjects = [s for s, prob in ranked if prob >= 0.5]
+
+    return {
+        "interested_subjects": interested_subjects if interested_subjects else [ranked[0][0]],
+        "scores": subject_avg,
+        "method": "random_forest"
+    }
+
+
+@app.post("/predict-forgetting")
+async def predict_forgetting(req: ForgettingPredictRequest):
+    """
+    Trains a LogisticRegression model on the user's revision history,
+    then predicts forgetting probability for each concept.
+    Returns concepts sorted by forgetting probability (highest first).
+    """
+    if len(req.records) < 2:
+        return {"revise": [r.concept_id for r in req.records], "method": "fallback"}
+
+    X = np.array([[r.days_gap, r.quiz_score, r.revision_count, r.difficulty] for r in req.records])
+    # Label: forgotten if quiz_score < 50 OR days_gap > 7
+    y = np.array([1 if (r.quiz_score < 50 or r.days_gap > 7) else 0 for r in req.records])
+
+    if len(set(y)) < 2:
+        # All same — sort by days_gap descending (longest unseen first)
+        sorted_records = sorted(req.records, key=lambda r: r.days_gap, reverse=True)
+        return {"revise": [r.concept_id for r in sorted_records], "probabilities": {}, "method": "fallback_sorted"}
+
+    model = LogisticRegression(max_iter=200)
+    model.fit(X, y)
+
+    probs = model.predict_proba(X)[:, 1]
+
+    result = [
+        {"concept_id": r.concept_id, "subject": r.subject, "probability": float(p)}
+        for r, p in zip(req.records, probs)
+    ]
+    result.sort(key=lambda x: x["probability"], reverse=True)
+
+    return {
+        "revise": [r["concept_id"] for r in result if r["probability"] >= 0.5],
+        "all": result,
+        "method": "logistic_regression"
+    }
+
+
+# ── Chat Endpoints ──────────────────────────────────────────────────────────
 
 class JinnRequest(BaseModel):
     topic: str
