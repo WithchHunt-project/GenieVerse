@@ -1,154 +1,256 @@
-# GenieVerse
+GenieVerse
 
-An AI-powered learning companion app with four characters — Jinn, Mirrora, Abu, and Qbit. Includes a built-in "Digital Twin" Learning Tracker with Spaced Repetition.
+An AI-Powered Personalized Learning Companion
+
+Problem statement : Many learners struggle with one-size-fits-all education systems, lack of revision planning, and low engagement.
+GenieVerse addresses this by providing adaptive AI-based personalized(intrest based cconceptual) learning companions with memory-aware revision support.
+
+GenieVerse is an intelligent learning platform designed to make education interactive, adaptive, and personalized.
+The application features four unique AI companions — Jinn, Mirrora, Abu, and Qbit — each designed with a different teaching style to support diverse learning needs.
+
+The platform also includes a Digital Twin Learning Tracker powered by Spaced Repetition, enabling personalized revision schedules, weak-topic detection, and memory retention analysis.
+
 
 ---
 
-## Project Structure
+Project Structure
 
-```
 GenieVerse/
-├── backend/        # Python FastAPI server (Handles AI Logic)
-└── frontend/       # Next.js app (Handles UI & Supabase API Routes)
-```
+├── backend/        # FastAPI server handling AI and ML logic
+└── frontend/       # Next.js application handling UI and Supabase integration
+
 
 ---
 
-## Requirements & Prerequisites
+Tech Stack
 
-### System
-- Python 3.10 or higher
-- Node.js 18 or higher
-- npm
+Frontend
 
-### 1. AI Model Setup (Backend)
-All features use the **Google Gemini API** (`google-genai` SDK).
-- Primary model: `gemini-2.5-flash`
+Next.js
 
-You need a **Gemini API key** from: https://aistudio.google.com/app/apikey
+React
 
-Once you have the key, open `backend/main.py` and replace the value of `API_KEY`:
-```python
+Tailwind CSS
+
+Supabase
+
+
+Backend
+
+Python
+
+FastAPI
+
+Google Gemini API (google-genai SDK)
+
+
+Machine Learning Models
+
+Random Forest — Interest Prediction
+
+Logistic Regression — Forgetting Pattern Prediction
+
+
+Database
+
+Supabase PostgreSQL
+
+
+
+---
+
+System Requirements
+
+Python 3.10+
+
+Node.js 18+
+
+npm
+
+
+
+---
+
+AI Model Configuration
+
+GenieVerse uses the Google Gemini API for conversational learning and intelligent responses.
+
+Primary Model
+
+gemini-2.5-flash
+
+
+Get your API key from:
+
+Google AI Studio
+
+Replace the API key in backend/main.py:
+
 API_KEY = "your_api_key_here"
-```
 
-### 2. Database Setup (Supabase)
-This app uses Supabase for user profiles, concepts, and learning tracking. 
 
-1. Create a free project at [Supabase.com](https://supabase.com).
-2. Go to the **SQL Editor** in your new project and run this entire block to create the database:
+---
 
-```sql
-create table if not exists profiles (
-  id uuid primary key,
-  username text,
-  petname text,
-  class text,
-  interests text,
-  initial_interests text[],
-  detected_interests text[],
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
+Database Setup (Supabase)
 
-create table if not exists concepts (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  subject text,
-  difficulty integer default 1,
-  tags text[]
-);
+Create a free project using:
 
-create table if not exists user_progress (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references profiles(id) on delete cascade,
-  concept_id uuid references concepts(id) on delete cascade,
-  time_spent_seconds integer default 0,
-  rating integer,
-  completed_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
+Supabase
 
-create table if not exists digital_twin (
-  user_id uuid references profiles(id) on delete cascade,
-  concept_id uuid references concepts(id) on delete cascade,
-  last_studied_at timestamp with time zone default timezone('utc'::text, now()),
-  revision_count integer default 0,
-  memory_score integer default 100,
-  primary key (user_id, concept_id)
-);
+Open the SQL Editor and execute the provided SQL schema to create:
 
-create table if not exists quiz_results (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references profiles(id) on delete cascade,
-  concept_id uuid references concepts(id) on delete cascade,
-  score integer not null,
-  total_questions integer not null,
-  taken_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
+User Profiles
 
--- Very Important: Disable RLS for local dev prototype
-alter table profiles disable row level security;
-alter table concepts disable row level security;
-alter table user_progress disable row level security;
-alter table digital_twin disable row level security;
-alter table quiz_results disable row level security;
-alter table profiles drop constraint profiles_id_fkey;
+Concepts
 
--- Insert Default Concepts so the recommendation engine works
-INSERT INTO concepts (name, subject, difficulty, tags) 
-VALUES 
-  ('Photosynthesis', 'Biology', 2, ARRAY['Science', 'Nature', 'Biology']),
-  ('Gravity', 'Physics', 3, ARRAY['Science', 'Physics', 'Space']),
-  ('Black Holes', 'Space', 5, ARRAY['Space', 'Physics', 'Astronomy']),
-  ('Machine Learning', 'Computer Science', 4, ARRAY['AI', 'Technology', 'Coding']),
-  ('The Solar System', 'Astronomy', 1, ARRAY['Space', 'Science', 'Nature']);
-```
+User Progress
 
-### 3. Frontend Environment Setup
-Create a file named `.env.local` inside the `frontend/` folder. Add your Supabase URL and Anon Key (found in your Supabase Project Settings -> API):
+Digital Twin Tracking
 
-```env
+Quiz Results
+
+
+The schema also inserts default concepts required for the recommendation engine.
+
+
+---
+
+Frontend Environment Setup
+
+Create a .env.local file inside the frontend/ directory:
+
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
-```
+
 
 ---
 
-## Running the Application
+Running the Application
 
-Open two terminals:
+Backend Setup
 
-**Terminal 1 — Backend**
-```bash
 cd backend
+
 python -m venv venv
-# Windows:
+
+# Windows
 venv\Scripts\activate
-# Mac/Linux:
+
+# Mac/Linux
 # source venv/bin/activate
 
 pip install -r requirements.txt
+
 python -m uvicorn main:app --reload
-```
 
-**Terminal 2 — Frontend**
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Then open http://localhost:3000 in your browser.
 
 ---
 
-## Features & Modules
+Frontend Setup
 
-| Character / Module | Route | Description |
-|---|---|---|
-| **Home Dashboard** | `/` | Shows Digital Twin alerts, Revisions, and Weak Topics (Your Genie Suggests) |
-| **Jinn** | `/chat` | Explains topics using your interests as an analogy + Time & Rating tracking |
-| **Mirrora** | `/mirrora` | Reflective learning guide — asks questions instead of giving direct answers |
-| **Abu** | `/abu` | Friendly learning buddy — simple explanations |
-| **Qbit** | `/qbit` | Resolves doubts quickly + Quiz Score Tracking |
+cd frontend
 
-Mirrora, Abu, and Qbit support **voice input** (browser mic) and **text-to-speech** output.
+npm install
+
+npm run dev
+
+Open the application in your browser:
+
+http://localhost:3000
+
+
+---
+
+Core Features
+
+Module	Route	Description
+
+Home Dashboard	/	Displays revision reminders, weak topics, and Digital Twin insights
+Jinn	/chat	Explains concepts using personalized interest-based analogies
+Mirrora	/mirrora	Encourages reflective learning through guided questioning
+Abu	/abu	Provides beginner-friendly and simplified explanations
+Qbit	/qbit	Offers fast doubt resolution and quiz-based evaluation
+
+
+
+---
+
+Intelligent Learning Features
+
+Personalized AI tutoring experience
+
+Interest-based concept explanation
+
+Weak-topic identification
+
+Memory retention tracking
+
+Spaced repetition revision system
+
+Quiz score analysis
+
+Adaptive learning recommendations
+
+
+
+---
+
+Accessibility Features
+
+Voice Input Support
+
+Text-to-Speech Responses
+
+Interactive Conversational Learning
+
+Beginner-Friendly Interface
+
+
+
+---
+
+Digital Twin Learning System
+
+The Digital Twin module continuously analyzes:
+
+Learning patterns
+
+Revision frequency
+
+Topic difficulty
+
+Memory retention score
+
+Forgetting trends
+
+
+This helps GenieVerse recommend:
+
+When to revise
+
+Which topics need improvement
+
+Personalized learning paths
+
+
+
+---
+
+Vision
+
+GenieVerse aims to create a more human-centered AI learning experience where education becomes:
+
+Personalized
+
+Interactive
+
+Adaptive
+
+Accessible to every learner
+
+Future Scope
+Mobile application deployment for Android and iOS platforms
+Personalized study schedule generation based on user learning patterns
+Multi-language support for regional and global accessibility
+Advanced analytics dashboard for tracking long-term learning progress
+AI-generated notes, flashcards, and revision summaries
