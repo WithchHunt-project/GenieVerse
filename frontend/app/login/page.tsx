@@ -23,9 +23,23 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [petname, setPetname] = useState("");
   const [cls, setCls] = useState("");
-  const [interests, setInterests] = useState("");
+  const [interestInput, setInterestInput] = useState("");
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [signupPw, setSignupPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
+
+  const SUGGESTED_INTERESTS = ["Cars", "Sports", "Music", "Art", "Cooking", "Gaming", "Nature", "Space", "Technology", "Movies", "Animals", "Travel"];
+
+  function addInterest(val: string) {
+    const trimmed = val.trim();
+    if (!trimmed || selectedInterests.length >= 4 || selectedInterests.map(i => i.toLowerCase()).includes(trimmed.toLowerCase())) return;
+    setSelectedInterests(prev => [...prev, trimmed]);
+    setInterestInput("");
+  }
+
+  function removeInterest(i: string) {
+    setSelectedInterests(prev => prev.filter(x => x !== i));
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setSplash(false), 3200);
@@ -53,14 +67,17 @@ export default function LoginPage() {
     sessionStorage.setItem("gv_current_user", JSON.stringify({ id: key, email: user.email }));
     sessionStorage.setItem("gv_petname", user.petname);
 
+    const storedInterests = Array.isArray(user.interests)
+      ? user.interests
+      : (user.interests ? user.interests.split(",").map((s: string) => s.trim()) : []);
     await supabase.from("profiles").upsert({
       id: key,
       username: user.username,
       petname: user.petname,
       class: user.class,
       interests: user.interests,
-      initial_interests: [user.interests],
-      detected_interests: [user.interests]
+      initial_interests: storedInterests,
+      detected_interests: storedInterests
     }, { onConflict: "id" });
 
     setLoading(false);
@@ -72,12 +89,13 @@ export default function LoginPage() {
     setSignupError("");
     if (signupPw.length < 6) { setSignupError("Password must be at least 6 characters."); return; }
     if (signupPw !== confirmPw) { setSignupError("Passwords do not match."); return; }
+    if (selectedInterests.length < 1) { setSignupError("Please add at least 1 interest."); return; }
     setLoading(true);
     const users = getUsers();
     const exists = Object.values(users).some((u: any) => u.email === email || u.username === name);
     if (exists) { setSignupError("Username or email already taken."); setLoading(false); return; }
     const id = crypto.randomUUID();
-    users[id] = { email, username: name, password: signupPw, petname, class: cls, interests };
+    users[id] = { email, username: name, password: signupPw, petname, class: cls, interests: selectedInterests.join(", ") };
     localStorage.setItem("gv_users", JSON.stringify(users));
     sessionStorage.setItem("gv_current_user", JSON.stringify({ id, email }));
     sessionStorage.setItem("gv_petname", petname);
@@ -87,9 +105,9 @@ export default function LoginPage() {
       username: name,
       petname: petname,
       class: cls,
-      interests: interests,
-      initial_interests: [interests],
-      detected_interests: [interests]
+      interests: selectedInterests.join(", "),
+      initial_interests: selectedInterests,
+      detected_interests: selectedInterests
     });
     if (sbError) {
       console.error("Supabase insert error raw:", sbError);
@@ -191,15 +209,60 @@ export default function LoginPage() {
                 { placeholder: "Student Name (Username)", value: name, set: setName, type: "text" },
                 { placeholder: "Email Address", value: email, set: setEmail, type: "email" },
                 { placeholder: "Pet Name (your genie will call you this)", value: petname, set: setPetname, type: "text" },
-                { placeholder: "Interests / Hobbies (e.g. Art, Science)", value: interests, set: setInterests, type: "text" },
               ].map(({ placeholder, value, set, type }) => (
                 <div key={placeholder} className="flex items-center border border-purple-200 bg-white/50 rounded-xl px-3 focus-within:ring-2 focus-within:ring-purple-400">
-
                   <input className="flex-1 bg-transparent outline-none py-3 text-sm text-purple-900 placeholder-purple-400"
                     type={type} placeholder={placeholder} value={value}
                     onChange={e => set(e.target.value)} required />
                 </div>
               ))}
+
+              {/* Interest Selector */}
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-purple-700 font-semibold pl-1">Your Interests (pick 1–4) <span className="font-normal opacity-70">— Jinn will teach using these!</span></p>
+                {/* Suggested chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  {SUGGESTED_INTERESTS.map(s => (
+                    <button key={s} type="button"
+                      onClick={() => addInterest(s)}
+                      disabled={selectedInterests.length >= 4 || selectedInterests.map(i => i.toLowerCase()).includes(s.toLowerCase())}
+                      className={`text-xs px-3 py-1 rounded-full border transition-all ${
+                        selectedInterests.map(i => i.toLowerCase()).includes(s.toLowerCase())
+                          ? "bg-purple-500 text-white border-purple-500"
+                          : "bg-white/50 text-purple-700 border-purple-200 hover:bg-purple-100 disabled:opacity-40"
+                      }`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+                {/* Custom input */}
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 border border-purple-200 bg-white/50 rounded-xl px-3 py-2 text-sm text-purple-900 placeholder-purple-400 outline-none focus:ring-2 focus:ring-purple-400"
+                    placeholder="Or type your own interest..."
+                    value={interestInput}
+                    onChange={e => setInterestInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addInterest(interestInput); } }}
+                    disabled={selectedInterests.length >= 4}
+                  />
+                  <button type="button" onClick={() => addInterest(interestInput)}
+                    disabled={selectedInterests.length >= 4 || !interestInput.trim()}
+                    className="bg-purple-500 text-white text-xs px-3 rounded-xl disabled:opacity-40 hover:bg-purple-600">
+                    Add
+                  </button>
+                </div>
+                {/* Selected tags */}
+                {selectedInterests.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedInterests.map(i => (
+                      <span key={i} className="flex items-center gap-1 bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-1 rounded-full border border-purple-300">
+                        {i}
+                        <button type="button" onClick={() => removeInterest(i)} className="text-purple-500 hover:text-red-500 font-bold leading-none">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="flex items-center border border-purple-200 bg-white/50 rounded-xl px-3 focus-within:ring-2 focus-within:ring-purple-400">
                 <span className="mr-2">📚</span>
                 <select className="flex-1 bg-transparent outline-none py-3 text-sm text-purple-900"

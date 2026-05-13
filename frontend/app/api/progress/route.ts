@@ -4,55 +4,45 @@ import { supabase } from "../../../lib/supabase";
 export async function POST(req: Request) {
   try {
     const { userId, conceptId, timeSpent } = await req.json();
-    console.log("Progress API called:", { userId, conceptId, timeSpent });
 
-    const { error } = await supabase
+    // Insert a new progress row (user_progress has no unique constraint, each session is a row)
+    const { error: progressError } = await supabase
       .from("user_progress")
-      .upsert({
-        user_id: userId,
-        concept_id: conceptId,
-        time_spent: timeSpent,
-        last_studied_at: new Date(),
-      }, { onConflict: "user_id,concept_id" });
+      .insert({ user_id: userId, concept_id: conceptId, time_spent_seconds: timeSpent });
 
-    if (error) {
-      console.error("user_progress upsert error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (progressError) {
+      console.error("user_progress insert error:", progressError);
+      return NextResponse.json({ error: progressError.message }, { status: 500 });
     }
 
-    // Fetch concept subject
+    // Fetch concept subject for digital_twin topic tracking
     const { data: concept } = await supabase.from("concepts").select("subject").eq("id", conceptId).single();
     const subject = concept?.subject || "General";
 
-    // Get existing user_progress row
-    const { data: existing } = await supabase.from("user_progress").select("revision_count, memory_score").eq("user_id", userId).eq("concept_id", conceptId).single();
+    // Get existing digital_twin row for this user+concept
+    const { data: existing } = await supabase
+      .from("digital_twin")
+      .select("revision_count, memory_score")
+      .eq("user_id", userId)
+      .eq("concept_id", conceptId)
+      .single();
+
     const revision_count = (existing?.revision_count || 0) + 1;
     const memory_score = Math.min(100, (existing?.memory_score || 50) + 10);
 
-    await supabase.from("user_progress").update({ revision_count, memory_score }).eq("user_id", userId).eq("concept_id", conceptId);
+    // Upsert digital_twin row (has primary key on user_id, concept_id)
+    await supabase.from("digital_twin").upsert({
+      user_id: userId,
+      concept_id: conceptId,
+      last_studied_at: new Date(),
+      revision_count,
+      memory_score,
+    }, { onConflict: "user_id,concept_id" });
 
-    // Update digital_twin strong/weak topics
-    const { data: dt } = await supabase.from("digital_twin").select("*").eq("user_id", userId).single();
-    const weak_topics: string[] = dt?.weak_topics || [];
-    const strong_topics: string[] = dt?.strong_topics || [];
-    const total_revisions = (dt?.revision_count || 0) + 1;
+    // Update weak/strong topics on a separate digital_twin summary row keyed only by user
+    // We track this in the profile's detected_interests instead — no action needed here
 
-    if (!strong_topics.includes(subject) && !weak_topics.includes(subject)) {
-      weak_topics.push(subject);
-    }
-    if (total_revisions > 3 && weak_topics.includes(subject)) {
-      weak_topics.splice(weak_topics.indexOf(subject), 1);
-      if (!strong_topics.includes(subject)) strong_topics.push(subject);
-    }
-
-    const dtPayload = { revision_count: total_revisions, weak_topics, strong_topics, updated_at: new Date() };
-    if (dt) {
-      await supabase.from("digital_twin").update(dtPayload).eq("user_id", userId);
-    } else {
-      await supabase.from("digital_twin").insert({ user_id: userId, ...dtPayload });
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, revision_count, subject });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
